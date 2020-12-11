@@ -89,6 +89,7 @@ void loop() {
     }
     else if(page==3) {  // settings page
       settingsPage(isOnAir?'@':'#');
+      //settingsPage('o');
     }
     if(sw && (page==1 || page==3)) {
       bModify=true;

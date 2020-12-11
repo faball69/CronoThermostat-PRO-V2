@@ -6,6 +6,7 @@
 
 #include <SPI.h>
 #include <WiFiNINA.h>
+#include <ArduinoOTA.h>
 #include "main.h"
 
 int status = WL_IDLE_STATUS;
@@ -111,12 +112,15 @@ void initWifiService() {
     NVIC_SystemReset(); // system reset
   }
   // NTP ok
+  ArduinoOTA.begin(WiFi.localIP(), "arduino", "password", InternalStorage);
 }
 
-
+time_t lastGoodTime=0;
 time_t getNtpTime() {
   WiFiUDP Udp;
-  Udp.begin(localPort);
+  int ret=Udp.begin(localPort);
+  if(!ret)
+    return lastGoodTime;
   delay(100);
   while (Udp.parsePacket() > 0) ; // discard any previously received packets
   if(DEBUG)
@@ -152,25 +156,26 @@ time_t getNtpTime() {
       secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
       secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
       secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + 1*SECS_PER_HOUR; // +1==Central European Time
+      lastGoodTime=secsSince1900 - 2208988800UL + 1*SECS_PER_HOUR; // +1==Central European Time
+      return lastGoodTime;
     }
   }
   if(DEBUG)
     Serial.println("No NTP Response :-(");
-  return 0; // return 0 if unable to get the time
+  return 0;
 }
 
 String text;
 char buffer[5000];
-
 void runWifiService(float fTemp) {
   // check connection
   int h=hour();
-  if(h>23 || h<6)
+  if(h>22 || h<6)
     return;
   checkConnection(millis());
   if(!isOnAir)
     return;
+  ArduinoOTA.poll();
   // listen for incoming clients
   WiFiClient client = server.available();
   if (client) {
@@ -407,6 +412,7 @@ void checkConnection(long msNow) {
     //---------------------------------------------------
     if(now()<1000) {
       setSyncProvider(getNtpTime);
+      setSyncInterval(3600); // every hour re-sync
       server.begin();
       if(DEBUG)
         Serial.println("Starting connection to server...");
