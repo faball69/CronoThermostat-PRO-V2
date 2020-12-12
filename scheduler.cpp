@@ -7,7 +7,7 @@
 #include "main.h"
 
 bool bFire = false;
-void scheduler(float tempNow) {
+void scheduler() {
   int hh = hour();
   int minuteNow = hh * 60 + minute();
   int idProg = sto.weekProg[weekday()-1];
@@ -20,7 +20,7 @@ void scheduler(float tempNow) {
   // controllo force functionality
   if (sto.forceData.hForce) {
     if (sto.forceData.tFin > now()) {
-      if (sto.forceData.hForce>0 && hh>7 && hh<23 && tempNow<((float)(sto.forceData.maxTemp))/10.0f) // forza ma non di notte e se supero maxtemp
+      if (sto.forceData.hForce>0 && hh>7 && hh<23 && fLastTemp<((float)(sto.forceData.maxTemp))/10.0f) // forza ma non di notte e se supero maxtemp
         bFire = true;
       else
         bFire = false;
@@ -55,7 +55,7 @@ void scheduler(float tempNow) {
           Serial.println(setPtemp);
         }
         float ht=((float)(sto.forceData.hysteresisTemp))/100.0f;
-        if ((!bFire && tempNow < setPtemp) || (bFire && tempNow < (setPtemp + ht)))
+        if ((!bFire && fLastTemp < setPtemp) || (bFire && fLastTemp < (setPtemp + ht)))
           bFire = true;
         else
           bFire = false;

@@ -26,7 +26,7 @@
 
 // wifi + store
 void initWifiService();
-void runWifiService(float fTemp);
+void runWifiService();
 void saveDataFlash();
 // temp
 void initTempService();
@@ -50,7 +50,7 @@ void changeDimmer();
 void setDimmer(int d);
 void drawbitmap(int posx, int posy);
 // scheduler
-void scheduler(float tempNow);
+void scheduler();
 
 // globals temp in °C/10
 struct stForce {
@@ -75,3 +75,4 @@ extern stStorage sto;
 extern bool bFire;
 extern String ipAddr;
 extern bool isOnAir;
+extern float fLastTemp;

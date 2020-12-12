@@ -25,6 +25,14 @@ byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing pack
 String ipAddr="?.?.?.?";
 bool isOnAir=false;
 void checkConnection(long msNow);
+void page0(WiFiClient &client);
+void page1(WiFiClient &client);
+void page2(WiFiClient &client);
+void page3(WiFiClient &client);
+void page11(WiFiClient &client);
+void page12(WiFiClient &client);
+void page13(WiFiClient &client);
+void page14(WiFiClient &client);
 
 WiFiServer server(80);  // HTTP service
 
@@ -165,9 +173,10 @@ time_t getNtpTime() {
   return 0;
 }
 
-String text;
+int pageL=0; // 0=main 1=programs 2=settings 3=weekprog 11=Allday 12=ME 13=EE 14=N
+String url="";
 char buffer[5000];
-void runWifiService(float fTemp) {
+void runWifiService() {
   // check connection
   int h=hour();
   if(h>22 || h<6)
@@ -186,11 +195,26 @@ void runWifiService(float fTemp) {
       if (client.available()) {
         memset(buffer, 0, sizeof(buffer));
         client.read((uint8_t*)buffer, sizeof(buffer));
-        text=buffer;
+        String text=buffer;
+        if(text.indexOf("GET /settings ")!=-1)
+          pageL=2;
+        else if(text.indexOf("GET /weekprog ")!=-1)
+          pageL=3;
+        else if(text.indexOf("GET /programs/A ")!=-1)
+          pageL=11;
+        else if(text.indexOf("GET /programs/ME ")!=-1)
+          pageL=12;
+        else if(text.indexOf("GET /programs/EE ")!=-1)
+          pageL=13;
+        else if(text.indexOf("GET /programs/N ")!=-1)
+          pageL=14;
+        else if(text.indexOf("GET /programs ")!=-1)
+          pageL=1;
+        else if(text.indexOf("GET / ")!=-1)
+          pageL=0;
         if(DEBUG)
           Serial.print(text);
         int i1=text.indexOf("Referer:");
-        String url="";
         if(i1!=-1) {
           url=text.substring(i1+9);
           url=url.substring(0,url.indexOf("\n")-1);
@@ -228,8 +252,11 @@ void runWifiService(float fTemp) {
             else if(var[0]=='F') {
               if(var[1]=='H') {
                 if(sto.forceData.hForce!=val.toInt()) {
-                  sto.forceData.hForce=val.toInt();
-                  sto.forceData.tFin=now()+sto.forceData.hForce*3600;
+                  float hf=val.toInt();
+                  sto.forceData.hForce=hf;
+                  if(hf<0)
+                    hf*=-1;
+                  sto.forceData.tFin=now()+hf*3600;
                   bChangeFH=true;
                 }
               }
@@ -257,96 +284,22 @@ void runWifiService(float fTemp) {
         client.println("Connection: close");  // the connection will be closed after completion of the response
         //client.println("Refresh: 5");  // refresh the page automatically every 5 sec
         client.println();
-        memset(buffer, 0, sizeof(buffer));
-        sprintf(buffer, "\
-          <!DOCTYPE HTML>\
-          <html><head>\
-          <script>if(typeof window.history.pushState == 'function') {window.history.pushState({}, \"Hide\", \"%s\");}</script>\
-          </head><body>\
-          <h1>CT2_FA settings:</h1>\
-          <h3>Current temperature: %.1f&#x2103; %s</h3>\
-          <form method=get>\
-            Force for hours: <input type=number size=1 name=FH value=%d> <input type=submit value=Force><br>\
-          </form>\
-          <form method=get>\
-            <h3>Programs: T[Deg*10] HM[0xhhmm]</h3>\
-            <p style=\"text-align:right;\">AllDay:\
-            <input type=text size=1 name=T00 value=%d><input type=text size=4 name=HM00 value=0x%.04x>\
-            <input type=text size=1 name=T01 value=%d><input type=text size=4 name=HM01 value=0x%.04x>\
-            <input type=text size=1 name=T02 value=%d><input type=text size=4 name=HM02 value=0x%.04x>\
-            <input type=text size=1 name=T03 value=%d><input type=text size=4 name=HM03 value=0x%.04x>\
-            <input type=text size=1 name=T04 value=%d><input type=text size=4 name=HM04 value=0x%.04x>\
-            <input type=text size=1 name=T05 value=%d><input type=text size=4 name=HM05 value=0x%.04x></p>\
-            <p style=\"text-align:right;\">Morning+Evening:\
-            <input type=text size=1 name=T06 value=%d><input type=text size=4 name=HM06 value=0x%.04x>\
-            <input type=text size=1 name=T07 value=%d><input type=text size=4 name=HM07 value=0x%.04x>\
-            <input type=text size=1 name=T08 value=%d><input type=text size=4 name=HM08 value=0x%.04x>\
-            <input type=text size=1 name=T09 value=%d><input type=text size=4 name=HM09 value=0x%.04x>\
-            <input type=text size=1 name=T10 value=%d><input type=text size=4 name=HM10 value=0x%.04x>\
-            <input type=text size=1 name=T11 value=%d><input type=text size=4 name=HM11 value=0x%.04x></p>\
-            <p style=\"text-align:right;\">Early+Evening:\
-            <input type=text size=1 name=T12 value=%d><input type=text size=4 name=HM12 value=0x%.04x>\
-            <input type=text size=1 name=T13 value=%d><input type=text size=4 name=HM13 value=0x%.04x>\
-            <input type=text size=1 name=T14 value=%d><input type=text size=4 name=HM14 value=0x%.04x>\
-            <input type=text size=1 name=T15 value=%d><input type=text size=4 name=HM15 value=0x%.04x>\
-            <input type=text size=1 name=T16 value=%d><input type=text size=4 name=HM16 value=0x%.04x>\
-            <input type=text size=1 name=T17 value=%d><input type=text size=4 name=HM17 value=0x%.04x></p>\
-            <p style=\"text-align:right;\">maiNtenance:\
-            <input type=text size=1 name=T18 value=%d><input type=text size=4 name=HM18 value=0x%.04x>\
-            <input type=text size=1 name=T19 value=%d><input type=text size=4 name=HM19 value=0x%.04x>\
-            <input type=text size=1 name=T20 value=%d><input type=text size=4 name=HM20 value=0x%.04x>\
-            <input type=text size=1 name=T21 value=%d><input type=text size=4 name=HM21 value=0x%.04x>\
-            <input type=text size=1 name=T22 value=%d><input type=text size=4 name=HM22 value=0x%.04x>\
-            <input type=text size=1 name=T23 value=%d><input type=text size=4 name=HM23 value=0x%.04x></p><br>\
-            <h3>Day: WP[0=AllDay, 1=M+E, 2=E+E, 3=mNt]</h3>\
-            <p>Programs:\
-            sun <input type=text size=1 name=WP0 value=%d>\
-            mon <input type=text size=1 name=WP1 value=%d>\
-            tue <input type=text size=1 name=WP2 value=%d>\
-            wed <input type=text size=1 name=WP3 value=%d>\
-            thu <input type=text size=1 name=WP4 value=%d>\
-            fri <input type=text size=1 name=WP5 value=%d>\
-            sat <input type=text size=1 name=WP6 value=%d></p><br>\
-            <h3>Settings: T[Deg*10]</h3>\
-            <p>General:\
-            ofsTemp <input type=text size=1 name=FO value=%d>\
-            maxTemp <input type=text size=1 name=FM value=%d>\
-            hysTemp <input type=text size=1 name=FY value=%d>\
-            plantOFF <input type=text size=1 name=FP value=%d></p><br>\
-            <input type=submit value=Change+Store>\
-          </form>\
-          </body></html>\n", url.c_str(), fTemp, (bFire?"ON":"OFF"), sto.forceData.hForce,
-                             sto.progs[0].T[0], sto.progs[0].HM[0],
-                             sto.progs[0].T[1], sto.progs[0].HM[1],
-                             sto.progs[0].T[2], sto.progs[0].HM[2],
-                             sto.progs[0].T[3], sto.progs[0].HM[3],
-                             sto.progs[0].T[4], sto.progs[0].HM[4],
-                             sto.progs[0].T[5], sto.progs[0].HM[5],
-                             sto.progs[1].T[0], sto.progs[1].HM[0],
-                             sto.progs[1].T[1], sto.progs[1].HM[1],
-                             sto.progs[1].T[2], sto.progs[1].HM[2],
-                             sto.progs[1].T[3], sto.progs[1].HM[3],
-                             sto.progs[1].T[4], sto.progs[1].HM[4],
-                             sto.progs[1].T[5], sto.progs[1].HM[5],
-                             sto.progs[2].T[0], sto.progs[2].HM[0],
-                             sto.progs[2].T[1], sto.progs[2].HM[1],
-                             sto.progs[2].T[2], sto.progs[2].HM[2],
-                             sto.progs[2].T[3], sto.progs[2].HM[3],
-                             sto.progs[2].T[4], sto.progs[2].HM[4],
-                             sto.progs[2].T[5], sto.progs[2].HM[5],
-                             sto.progs[3].T[0], sto.progs[3].HM[0],
-                             sto.progs[3].T[1], sto.progs[3].HM[1],
-                             sto.progs[3].T[2], sto.progs[3].HM[2],
-                             sto.progs[3].T[3], sto.progs[3].HM[3],
-                             sto.progs[3].T[4], sto.progs[3].HM[4],
-                             sto.progs[3].T[5], sto.progs[3].HM[5],
-                             sto.weekProg[0], sto.weekProg[1], sto.weekProg[2], sto.weekProg[3], sto.weekProg[4], sto.weekProg[5], sto.weekProg[6],
-                             sto.forceData.ofsTemp, sto.forceData.maxTemp, sto.forceData.hysteresisTemp, sto.forceData.bOFF);
-        if(DEBUG) {
-            Serial.println(buffer);
-            Serial.println(strlen(buffer));
-        }
-        client.println(buffer);
+        if(pageL==0)
+          page0(client);
+        else if(pageL==1)
+          page1(client);
+        else if(pageL==2)
+          page2(client);
+        else if(pageL==3)
+          page3(client);
+        else if(pageL==11)
+          page11(client);
+        else if(pageL==12)
+          page12(client);
+        else if(pageL==13)
+          page13(client);
+        else if(pageL==14)
+          page14(client);
         if(DEBUG)
           Serial.println("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
         break;
@@ -357,6 +310,214 @@ void runWifiService(float fTemp) {
   // close the connection:
     client.stop();
   }
+}
+
+//<script>if(typeof window.history.pushState == 'function') {window.history.pushState({}, \"Hide\", \"%s\");}</script>
+void page0(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+    <!DOCTYPE HTML>\
+    <html><body>\
+    <h1>CT2_FA</h1>\
+    <h3>Current temperature: %.1f&#x2103; %s</h3>\
+    <form method=get>\
+      Force for hours: <input type=number size=1 name=FH value=%d> <input type=submit value=Force>\
+    </form>\
+    <h2><a href=\"/programs\">programs</a> \
+    <a href=\"/weekprog\">weekprog</a>\
+    <a href=\"/settings\">settings</a></h2>\
+    </body></html>\n", fLastTemp, (bFire?"ON":"OFF"), sto.forceData.hForce);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page1(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+    <!DOCTYPE HTML>\
+    <html><body>\
+    <h1>CT2_FA</h1>\
+    <h2>Programs:</h2>\
+    <h3><a href=\"/programs/A\">AllDay</a><br>\
+    <a href=\"/programs/ME\">Morning+Evening</a><br>\
+    <a href=\"/programs/EE\">Early+Evening</a><br>\
+    <a href=\"/programs/N\">maiNtenance</a></h3>\
+    </body></html>\n");
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page2(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+  <!DOCTYPE HTML>\
+  <html><body>\
+  <h1>CT2_FA</h1>\
+  <h2>Settings:</h2>T[Deg*10]\
+  <form method=get>\
+    ofsTemp <input type=text size=1 name=FO value=%d>\
+    maxTemp <input type=text size=1 name=FM value=%d>\
+    hysTemp <input type=text size=1 name=FY value=%d>\
+    plantOFF <input type=text size=1 name=FP value=%d>\
+    <input type=submit value=Change+Store>\
+  </form>\
+  </body></html>\n", sto.forceData.ofsTemp, sto.forceData.maxTemp, sto.forceData.hysteresisTemp, sto.forceData.bOFF);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page3(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+  <!DOCTYPE HTML>\
+  <html><body>\
+  <h1>CT2_FA</h1>\
+  <h2>WeekProg:</h2>WP[0=AllDay, 1=M+E, 2=E+E, 3=mNt]\
+  <form method=get>\
+    sun <input type=text size=1 name=WP0 value=%d>\
+    mon <input type=text size=1 name=WP1 value=%d>\
+    tue <input type=text size=1 name=WP2 value=%d>\
+    wed <input type=text size=1 name=WP3 value=%d>\
+    thu <input type=text size=1 name=WP4 value=%d>\
+    fri <input type=text size=1 name=WP5 value=%d>\
+    sat <input type=text size=1 name=WP6 value=%d>\
+    <input type=submit value=Change+Store>\
+  </form>\
+  </body></html>\n", sto.weekProg[0], sto.weekProg[1], sto.weekProg[2], sto.weekProg[3], sto.weekProg[4], sto.weekProg[5], sto.weekProg[6]);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page11(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+  <!DOCTYPE HTML>\
+  <html><body>\
+  <h1>CT2_FA</h1>\
+  <h2>AllDay:</h2>T[Deg*10] HM[0xhhmm]\
+  <form method=get>\
+    <input type=text size=1 name=T00 value=%d><input type=text size=4 name=HM00 value=0x%.04x>\
+    <input type=text size=1 name=T01 value=%d><input type=text size=4 name=HM01 value=0x%.04x>\
+    <input type=text size=1 name=T02 value=%d><input type=text size=4 name=HM02 value=0x%.04x>\
+    <input type=text size=1 name=T03 value=%d><input type=text size=4 name=HM03 value=0x%.04x>\
+    <input type=text size=1 name=T04 value=%d><input type=text size=4 name=HM04 value=0x%.04x>\
+    <input type=text size=1 name=T05 value=%d><input type=text size=4 name=HM05 value=0x%.04x>\
+    <input type=submit value=Change+Store>\
+  </form>\
+  </body></html>\n",
+    sto.progs[0].T[0], sto.progs[0].HM[0],
+    sto.progs[0].T[1], sto.progs[0].HM[1],
+    sto.progs[0].T[2], sto.progs[0].HM[2],
+    sto.progs[0].T[3], sto.progs[0].HM[3],
+    sto.progs[0].T[4], sto.progs[0].HM[4],
+    sto.progs[0].T[5], sto.progs[0].HM[5]);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page12(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+  <!DOCTYPE HTML>\
+  <html><body>\
+  <h1>CT2_FA</h1>\
+  <h2>Morning+Evening:</h2>T[Deg*10] HM[0xhhmm]\
+  <form method=get>\
+    <input type=text size=1 name=T06 value=%d><input type=text size=4 name=HM06 value=0x%.04x>\
+    <input type=text size=1 name=T07 value=%d><input type=text size=4 name=HM07 value=0x%.04x>\
+    <input type=text size=1 name=T08 value=%d><input type=text size=4 name=HM08 value=0x%.04x>\
+    <input type=text size=1 name=T09 value=%d><input type=text size=4 name=HM09 value=0x%.04x>\
+    <input type=text size=1 name=T10 value=%d><input type=text size=4 name=HM10 value=0x%.04x>\
+    <input type=text size=1 name=T11 value=%d><input type=text size=4 name=HM11 value=0x%.04x>\
+    <input type=submit value=Change+Store>\
+  </form>\
+  </body></html>\n",
+    sto.progs[1].T[0], sto.progs[1].HM[0],
+    sto.progs[1].T[1], sto.progs[1].HM[1],
+    sto.progs[1].T[2], sto.progs[1].HM[2],
+    sto.progs[1].T[3], sto.progs[1].HM[3],
+    sto.progs[1].T[4], sto.progs[1].HM[4],
+    sto.progs[1].T[5], sto.progs[1].HM[5]);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page13(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+  <!DOCTYPE HTML>\
+  <html><body>\
+  <h1>CT2_FA</h1>\
+  <h2>Early+Evening:</h2>T[Deg*10] HM[0xhhmm]\
+  <form method=get>\
+    <input type=text size=1 name=T12 value=%d><input type=text size=4 name=HM12 value=0x%.04x>\
+    <input type=text size=1 name=T13 value=%d><input type=text size=4 name=HM13 value=0x%.04x>\
+    <input type=text size=1 name=T14 value=%d><input type=text size=4 name=HM14 value=0x%.04x>\
+    <input type=text size=1 name=T15 value=%d><input type=text size=4 name=HM15 value=0x%.04x>\
+    <input type=text size=1 name=T16 value=%d><input type=text size=4 name=HM16 value=0x%.04x>\
+    <input type=text size=1 name=T17 value=%d><input type=text size=4 name=HM17 value=0x%.04x>\
+    <input type=submit value=Change+Store>\
+  </form>\
+  </body></html>\n",
+    sto.progs[2].T[0], sto.progs[2].HM[0],
+    sto.progs[2].T[1], sto.progs[2].HM[1],
+    sto.progs[2].T[2], sto.progs[2].HM[2],
+    sto.progs[2].T[3], sto.progs[2].HM[3],
+    sto.progs[2].T[4], sto.progs[2].HM[4],
+    sto.progs[2].T[5], sto.progs[2].HM[5]);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
+}
+
+void page14(WiFiClient &client) {
+  memset(buffer, 0, sizeof(buffer));
+  sprintf(buffer, "\
+  <!DOCTYPE HTML>\
+  <html><body>\
+  <h1>CT2_FA</h1>\
+  <h2>maiNtenance:</h2>T[Deg*10] HM[0xhhmm]\
+  <form method=get>\
+    <input type=text size=1 name=T18 value=%d><input type=text size=4 name=HM18 value=0x%.04x>\
+    <input type=text size=1 name=T19 value=%d><input type=text size=4 name=HM19 value=0x%.04x>\
+    <input type=text size=1 name=T20 value=%d><input type=text size=4 name=HM20 value=0x%.04x>\
+    <input type=text size=1 name=T21 value=%d><input type=text size=4 name=HM21 value=0x%.04x>\
+    <input type=text size=1 name=T22 value=%d><input type=text size=4 name=HM22 value=0x%.04x>\
+    <input type=text size=1 name=T23 value=%d><input type=text size=4 name=HM23 value=0x%.04x>\
+    <input type=submit value=Change+Store>\
+  </form>\
+  </body></html>\n",
+    sto.progs[3].T[0], sto.progs[3].HM[0],
+    sto.progs[3].T[1], sto.progs[3].HM[1],
+    sto.progs[3].T[2], sto.progs[3].HM[2],
+    sto.progs[3].T[3], sto.progs[3].HM[3],
+    sto.progs[3].T[4], sto.progs[3].HM[4],
+    sto.progs[3].T[5], sto.progs[3].HM[5]);
+  if(DEBUG) {
+      Serial.println(buffer);
+      Serial.println(strlen(buffer));
+  }
+  client.println(buffer);
 }
 
 bool bDisconnect=false;

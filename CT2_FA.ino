@@ -15,9 +15,6 @@ bool bProgram = false;
 int nProg = 0;
 int arrayDT[5];
 
-void showDateTimePage(bool bGet = false);
-void idlePage(float fTemp);
-
 int smCursor = 0;
 unsigned long msIdle = millis();
 unsigned long msTemp = millis();
@@ -25,9 +22,9 @@ unsigned long msScheduler = millis();
 unsigned long msLast = millis();
 unsigned long msDimmer = millis();
 bool bIdleState = true;
-float lastTemp = 0.0f;
 bool bForce=false;
 long lastOp=0;
+float fLastTemp=0.0f;
 
 void setup() {
   // Open serial communications and wait for port to open:
@@ -55,7 +52,7 @@ int aux=0;
 int page=0; //0=idle 1=force 2=prog
 bool bModify=false;
 void loop() {
-  runWifiService(lastTemp);
+  runWifiService();
   long nowTime=millis();
   int dir = getDir();
   bool sw = getSwitch();
@@ -75,10 +72,10 @@ void loop() {
     // pages handling
     if(page==0) { // idle page
       if(nowTime>lastUpd+5000) {
-        lastTemp = readTemp();
-        idlePage(lastTemp);
+        fLastTemp = readTemp();
+        idlePage();
         lastUpd=nowTime;
-        scheduler(lastTemp);
+        scheduler();
       }
     }
     else if(page==1) {  // force page
@@ -112,7 +109,9 @@ void loop() {
           forcePage(hf);
           if(sw && hf!=sto.forceData.hForce) {
             sto.forceData.hForce=hf;
-            sto.forceData.tFin=now()+sto.forceData.hForce*3600;
+            if(hf<0)
+              hf*=-1;
+            sto.forceData.tFin=now()+hf*3600;
             page=0;
             aux=0;
             bModify=false;
@@ -135,9 +134,9 @@ void loop() {
   }
 }
 
-void idlePage(float fTemp) {
+void idlePage() {
   char text[100];
-  sprintf(text, "%.1f", fTemp);
+  sprintf(text, "%.1f", fLastTemp);
   clearOled();
   drawbitmap(100, 10);
   printOled(text, 20, 8, 3, true);
