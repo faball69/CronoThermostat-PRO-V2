@@ -9,32 +9,29 @@
 #include <ArduinoOTA.h>
 #include "main.h"
 
-int status = WL_IDLE_STATUS;
 #include "secret.h"
-///////please enter your sensitive data in the Secret tab/arduino_secrets.h
-char ssid[] = SECRET_SSID;        // your network SSID (name)
-char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
-int keyIndex = 0;            // your network key Index number (needed only for WEP)
+String ssid[MAX_NETWORKS]={SECRET_SSID_P, SECRET_SSID_0, SECRET_SSID_1, SECRET_SSID_2};
+String pass[MAX_NETWORKS]={SECRET_PASS_P, SECRET_PASS_0, SECRET_PASS_1, SECRET_PASS_2};
 
+// NTP
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 //IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 IPAddress timeServer(193,204,114,105);  // time.inrim.it
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+
 // exported
 String ipAddr="?.?.?.?";
-bool isOnAir=false;
-void checkConnection(long msNow);
+String tSSID="????";
+long RSSI=0;
+bool bOnLine=false;
+// forward reference
 void page0(WiFiClient &client);
 void page1(WiFiClient &client);
 void page2(WiFiClient &client);
 void page3(WiFiClient &client);
-void page11(WiFiClient &client);
-void page12(WiFiClient &client);
-void page13(WiFiClient &client);
-void page14(WiFiClient &client);
 
-WiFiServer server(80);  // HTTP service
+WiFiServer WEBserver(80);  // HTTP service
 
 // storage
 stStorage preSto =  {true,
@@ -91,102 +88,72 @@ void initWifiService() {
     // don't continue
     while (true);
   }
-
   String fv = WiFi.firmwareVersion();
   if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
     if(DEBUG)
       Serial.println("Please upgrade the firmware");
   }
-
   initFlash();
-  long t=0;
-  do {
-    checkConnection(millis());
-  }
-  while(!isOnAir);
-  // wait NTP
-  if(isOnAir) {
-    int cnt=0;
-    do {
-      delay(1000);
-      cnt++;
-      t=now();
-    }
-    while(t<1000 && cnt<9); // attendo che arrivi almeno un pacchetto NTP valido
-  }
-  if(t<1000) {
-    if(DEBUG)
-      Serial.println("time from NTP not valid!");
-    NVIC_SystemReset(); // system reset
-  }
-  // NTP ok
-  ArduinoOTA.begin(WiFi.localIP(), "arduino", "password", InternalStorage);
 }
 
-time_t lastGoodTime=0;
-time_t getNtpTime() {
+bool updateNtpTime() {
   WiFiUDP Udp;
-  int ret=Udp.begin(localPort);
-  if(!ret)
-    return lastGoodTime;
-  delay(100);
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  if(DEBUG)
-    Serial.println("Transmit NTP Request");
-  // send NPT packet---------------------------------
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(timeServer, 123); //NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
-  //-------------------------------------------------
-  //sendNTPpacket(timeServer);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      if(DEBUG)
-        Serial.println("Receive NTP Response");
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      lastGoodTime=secsSince1900 - 2208988800UL + 1*SECS_PER_HOUR; // +1==Central European Time
-      return lastGoodTime;
+  if(Udp.begin(localPort)) {
+    delay(100);
+    while (Udp.parsePacket() > 0) ; // discard any previously received packets
+    if(DEBUG)
+      Serial.println("Transmit NTP Request");
+    // send NPT packet---------------------------------
+    memset(packetBuffer, 0, NTP_PACKET_SIZE);
+    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+    packetBuffer[1] = 0;     // Stratum, or type of clock
+    packetBuffer[2] = 6;     // Polling Interval
+    packetBuffer[3] = 0xEC;  // Peer Clock Precision
+    // 8 bytes of zero for Root Delay & Root Dispersion
+    packetBuffer[12]  = 49;
+    packetBuffer[13]  = 0x4E;
+    packetBuffer[14]  = 49;
+    packetBuffer[15]  = 52;
+    // all NTP fields have been given values, now
+    // you can send a packet requesting a timestamp:
+    Udp.beginPacket(timeServer, 123); //NTP requests are to port 123
+    Udp.write(packetBuffer, NTP_PACKET_SIZE);
+    Udp.endPacket();
+    //-------------------------------------------------
+    //sendNTPpacket(timeServer);
+    uint32_t beginWait = millis();
+    while (millis() - beginWait < 1500) {
+      int size = Udp.parsePacket();
+      if (size >= NTP_PACKET_SIZE) {
+        if(DEBUG)
+          Serial.println("Receive NTP Response");
+        Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
+        unsigned long secsSince1900;
+        // convert four bytes starting at location 40 to a long integer
+        secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
+        secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
+        secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
+        secsSince1900 |= (unsigned long)packetBuffer[43];
+        time_t nptt=secsSince1900 - 2208988800UL + 1*SECS_PER_HOUR; // +1==Central European Time
+        setTime(nptt);
+        return true;
+      }
     }
   }
-  if(DEBUG)
-    Serial.println("No NTP Response :-(");
-  return 0;
+  else
+    if(DEBUG)
+      Serial.println("No UDP service :-(");
+  return false;
 }
 
-int pageL=0; // 0=main 1=programs 2=settings 3=weekprog 11=Allday 12=ME 13=EE 14=N
+int pageL=0; // 0=main 1=programs 2=settings 3=weekprog
 String url="";
 char buffer[5000];
 void runWifiService() {
   // check connection
-  int h=hour();
-  if(h>22 || h<6)
-    return;
-  checkConnection(millis());
-  if(!isOnAir)
-    return;
   ArduinoOTA.poll();
   // listen for incoming clients
-  WiFiClient client = server.available();
+  WiFiClient client = WEBserver.available();
   if (client) {
     // an http request ends with a blank line
     while (client.connected()) {
@@ -196,20 +163,12 @@ void runWifiService() {
         memset(buffer, 0, sizeof(buffer));
         client.read((uint8_t*)buffer, sizeof(buffer));
         String text=buffer;
-        if(text.indexOf("GET /settings ")!=-1)
+        if(text.indexOf("GET /programs ")!=-1)
+          pageL=1;
+        else if(text.indexOf("GET /settings ")!=-1)
           pageL=2;
         else if(text.indexOf("GET /weekprog ")!=-1)
           pageL=3;
-        else if(text.indexOf("GET /programs/A ")!=-1)
-          pageL=11;
-        else if(text.indexOf("GET /programs/ME ")!=-1)
-          pageL=12;
-        else if(text.indexOf("GET /programs/EE ")!=-1)
-          pageL=13;
-        else if(text.indexOf("GET /programs/N ")!=-1)
-          pageL=14;
-        else if(text.indexOf("GET /programs ")!=-1)
-          pageL=1;
         else if(text.indexOf("GET / ")!=-1)
           pageL=0;
         if(DEBUG)
@@ -221,12 +180,12 @@ void runWifiService() {
         }
         if(DEBUG)
           Serial.println("url="+url);
-        int ini=text.indexOf("GET /?");
+        int ini=text.indexOf("?");
         int fin=text.indexOf(" HTTP");
         if(ini!=-1 && fin!=-1) {  // ricezione dati cambiati
           bool bChangeFH=false;
           buffer[fin]='\0'; // termino stringa fin dove mi serve
-          char *ptr=strtok(buffer+ini+6, "&");
+          char *ptr=strtok(buffer+ini+1, "&");
           while(ptr!=NULL) {
             String s=ptr;
             ini = s.indexOf("=");
@@ -292,14 +251,6 @@ void runWifiService() {
           page2(client);
         else if(pageL==3)
           page3(client);
-        else if(pageL==11)
-          page11(client);
-        else if(pageL==12)
-          page12(client);
-        else if(pageL==13)
-          page13(client);
-        else if(pageL==14)
-          page14(client);
         if(DEBUG)
           Serial.println("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
         break;
@@ -319,13 +270,13 @@ void page0(WiFiClient &client) {
     <!DOCTYPE HTML>\
     <html><body>\
     <h1>CT2_FA</h1>\
-    <h3>Current temperature: %.1f&#x2103; %s</h3>\
+    <h2>Current temperature: %.1f&#x2103; %s</h2>\
     <form method=get>\
       Force for hours: <input type=number size=1 name=FH value=%d> <input type=submit value=Force>\
     </form>\
-    <h2><a href=\"/programs\">programs</a> \
+    <h3><a href=\"/programs\">programs</a> \
     <a href=\"/weekprog\">weekprog</a>\
-    <a href=\"/settings\">settings</a></h2>\
+    <a href=\"/settings\">settings</a></h3>\
     </body></html>\n", fLastTemp, (bFire?"ON":"OFF"), sto.forceData.hForce);
   if(DEBUG) {
       Serial.println(buffer);
@@ -340,12 +291,59 @@ void page1(WiFiClient &client) {
     <!DOCTYPE HTML>\
     <html><body>\
     <h1>CT2_FA</h1>\
-    <h2>Programs:</h2>\
-    <h3><a href=\"/programs/A\">AllDay</a><br>\
-    <a href=\"/programs/ME\">Morning+Evening</a><br>\
-    <a href=\"/programs/EE\">Early+Evening</a><br>\
-    <a href=\"/programs/N\">maiNtenance</a></h3>\
-    </body></html>\n");
+    <h2>Programs: T[Deg*10] HM[0xhhmm]</h2>\
+    <form method=get>\
+      <p style=\"text-align:right;\">AllDay:<input type=text size=1 name=T00 value=%d><input type=text size=4 name=HM00 value=0x%.04x>\
+      <input type=text size=1 name=T01 value=%d><input type=text size=4 name=HM01 value=0x%.04x>\
+      <input type=text size=1 name=T02 value=%d><input type=text size=4 name=HM02 value=0x%.04x>\
+      <input type=text size=1 name=T03 value=%d><input type=text size=4 name=HM03 value=0x%.04x>\
+      <input type=text size=1 name=T04 value=%d><input type=text size=4 name=HM04 value=0x%.04x>\
+      <input type=text size=1 name=T05 value=%d><input type=text size=4 name=HM05 value=0x%.04x></p>\
+      <p style=\"text-align:right;\">Morning+Evening:<input type=text size=1 name=T06 value=%d><input type=text size=4 name=HM06 value=0x%.04x>\
+      <input type=text size=1 name=T07 value=%d><input type=text size=4 name=HM07 value=0x%.04x>\
+      <input type=text size=1 name=T08 value=%d><input type=text size=4 name=HM08 value=0x%.04x>\
+      <input type=text size=1 name=T09 value=%d><input type=text size=4 name=HM09 value=0x%.04x>\
+      <input type=text size=1 name=T10 value=%d><input type=text size=4 name=HM10 value=0x%.04x>\
+      <input type=text size=1 name=T11 value=%d><input type=text size=4 name=HM11 value=0x%.04x></p>\
+      <p style=\"text-align:right;\">Early+Evening:<input type=text size=1 name=T12 value=%d><input type=text size=4 name=HM12 value=0x%.04x>\
+      <input type=text size=1 name=T13 value=%d><input type=text size=4 name=HM13 value=0x%.04x>\
+      <input type=text size=1 name=T14 value=%d><input type=text size=4 name=HM14 value=0x%.04x>\
+      <input type=text size=1 name=T15 value=%d><input type=text size=4 name=HM15 value=0x%.04x>\
+      <input type=text size=1 name=T16 value=%d><input type=text size=4 name=HM16 value=0x%.04x>\
+      <input type=text size=1 name=T17 value=%d><input type=text size=4 name=HM17 value=0x%.04x></p>\
+      <p style=\"text-align:right;\">maiNtenance:<input type=text size=1 name=T18 value=%d><input type=text size=4 name=HM18 value=0x%.04x>\
+      <input type=text size=1 name=T19 value=%d><input type=text size=4 name=HM19 value=0x%.04x>\
+      <input type=text size=1 name=T20 value=%d><input type=text size=4 name=HM20 value=0x%.04x>\
+      <input type=text size=1 name=T21 value=%d><input type=text size=4 name=HM21 value=0x%.04x>\
+      <input type=text size=1 name=T22 value=%d><input type=text size=4 name=HM22 value=0x%.04x>\
+      <input type=text size=1 name=T23 value=%d><input type=text size=4 name=HM23 value=0x%.04x></p>\
+      <input type=submit value=Change+Store>\
+    </form>\
+    </body></html>\n",
+    sto.progs[0].T[0], sto.progs[0].HM[0],
+    sto.progs[0].T[1], sto.progs[0].HM[1],
+    sto.progs[0].T[2], sto.progs[0].HM[2],
+    sto.progs[0].T[3], sto.progs[0].HM[3],
+    sto.progs[0].T[4], sto.progs[0].HM[4],
+    sto.progs[0].T[5], sto.progs[0].HM[5],
+    sto.progs[1].T[0], sto.progs[1].HM[0],
+    sto.progs[1].T[1], sto.progs[1].HM[1],
+    sto.progs[1].T[2], sto.progs[1].HM[2],
+    sto.progs[1].T[3], sto.progs[1].HM[3],
+    sto.progs[1].T[4], sto.progs[1].HM[4],
+    sto.progs[1].T[5], sto.progs[1].HM[5],
+    sto.progs[2].T[0], sto.progs[2].HM[0],
+    sto.progs[2].T[1], sto.progs[2].HM[1],
+    sto.progs[2].T[2], sto.progs[2].HM[2],
+    sto.progs[2].T[3], sto.progs[2].HM[3],
+    sto.progs[2].T[4], sto.progs[2].HM[4],
+    sto.progs[2].T[5], sto.progs[2].HM[5],
+    sto.progs[3].T[0], sto.progs[3].HM[0],
+    sto.progs[3].T[1], sto.progs[3].HM[1],
+    sto.progs[3].T[2], sto.progs[3].HM[2],
+    sto.progs[3].T[3], sto.progs[3].HM[3],
+    sto.progs[3].T[4], sto.progs[3].HM[4],
+    sto.progs[3].T[5], sto.progs[3].HM[5]);
   if(DEBUG) {
       Serial.println(buffer);
       Serial.println(strlen(buffer));
@@ -359,12 +357,12 @@ void page2(WiFiClient &client) {
   <!DOCTYPE HTML>\
   <html><body>\
   <h1>CT2_FA</h1>\
-  <h2>Settings:</h2>T[Deg*10]\
+  <h2>Settings: T[Deg*10]</h2>\
   <form method=get>\
-    ofsTemp <input type=text size=1 name=FO value=%d>\
+    <p>ofsTemp <input type=text size=1 name=FO value=%d>\
     maxTemp <input type=text size=1 name=FM value=%d>\
     hysTemp <input type=text size=1 name=FY value=%d>\
-    plantOFF <input type=text size=1 name=FP value=%d>\
+    plantOFF <input type=text size=1 name=FP value=%d></p>\
     <input type=submit value=Change+Store>\
   </form>\
   </body></html>\n", sto.forceData.ofsTemp, sto.forceData.maxTemp, sto.forceData.hysteresisTemp, sto.forceData.bOFF);
@@ -381,138 +379,18 @@ void page3(WiFiClient &client) {
   <!DOCTYPE HTML>\
   <html><body>\
   <h1>CT2_FA</h1>\
-  <h2>WeekProg:</h2>WP[0=AllDay, 1=M+E, 2=E+E, 3=mNt]\
+  <h2>WeekProg: WP[0=AllDay, 1=M+E, 2=E+E, 3=mNt]</h2>\
   <form method=get>\
-    sun <input type=text size=1 name=WP0 value=%d>\
+    <p>sun <input type=text size=1 name=WP0 value=%d>\
     mon <input type=text size=1 name=WP1 value=%d>\
     tue <input type=text size=1 name=WP2 value=%d>\
     wed <input type=text size=1 name=WP3 value=%d>\
     thu <input type=text size=1 name=WP4 value=%d>\
     fri <input type=text size=1 name=WP5 value=%d>\
-    sat <input type=text size=1 name=WP6 value=%d>\
+    sat <input type=text size=1 name=WP6 value=%d></p>\
     <input type=submit value=Change+Store>\
   </form>\
   </body></html>\n", sto.weekProg[0], sto.weekProg[1], sto.weekProg[2], sto.weekProg[3], sto.weekProg[4], sto.weekProg[5], sto.weekProg[6]);
-  if(DEBUG) {
-      Serial.println(buffer);
-      Serial.println(strlen(buffer));
-  }
-  client.println(buffer);
-}
-
-void page11(WiFiClient &client) {
-  memset(buffer, 0, sizeof(buffer));
-  sprintf(buffer, "\
-  <!DOCTYPE HTML>\
-  <html><body>\
-  <h1>CT2_FA</h1>\
-  <h2>AllDay:</h2>T[Deg*10] HM[0xhhmm]\
-  <form method=get>\
-    <input type=text size=1 name=T00 value=%d><input type=text size=4 name=HM00 value=0x%.04x>\
-    <input type=text size=1 name=T01 value=%d><input type=text size=4 name=HM01 value=0x%.04x>\
-    <input type=text size=1 name=T02 value=%d><input type=text size=4 name=HM02 value=0x%.04x>\
-    <input type=text size=1 name=T03 value=%d><input type=text size=4 name=HM03 value=0x%.04x>\
-    <input type=text size=1 name=T04 value=%d><input type=text size=4 name=HM04 value=0x%.04x>\
-    <input type=text size=1 name=T05 value=%d><input type=text size=4 name=HM05 value=0x%.04x>\
-    <input type=submit value=Change+Store>\
-  </form>\
-  </body></html>\n",
-    sto.progs[0].T[0], sto.progs[0].HM[0],
-    sto.progs[0].T[1], sto.progs[0].HM[1],
-    sto.progs[0].T[2], sto.progs[0].HM[2],
-    sto.progs[0].T[3], sto.progs[0].HM[3],
-    sto.progs[0].T[4], sto.progs[0].HM[4],
-    sto.progs[0].T[5], sto.progs[0].HM[5]);
-  if(DEBUG) {
-      Serial.println(buffer);
-      Serial.println(strlen(buffer));
-  }
-  client.println(buffer);
-}
-
-void page12(WiFiClient &client) {
-  memset(buffer, 0, sizeof(buffer));
-  sprintf(buffer, "\
-  <!DOCTYPE HTML>\
-  <html><body>\
-  <h1>CT2_FA</h1>\
-  <h2>Morning+Evening:</h2>T[Deg*10] HM[0xhhmm]\
-  <form method=get>\
-    <input type=text size=1 name=T06 value=%d><input type=text size=4 name=HM06 value=0x%.04x>\
-    <input type=text size=1 name=T07 value=%d><input type=text size=4 name=HM07 value=0x%.04x>\
-    <input type=text size=1 name=T08 value=%d><input type=text size=4 name=HM08 value=0x%.04x>\
-    <input type=text size=1 name=T09 value=%d><input type=text size=4 name=HM09 value=0x%.04x>\
-    <input type=text size=1 name=T10 value=%d><input type=text size=4 name=HM10 value=0x%.04x>\
-    <input type=text size=1 name=T11 value=%d><input type=text size=4 name=HM11 value=0x%.04x>\
-    <input type=submit value=Change+Store>\
-  </form>\
-  </body></html>\n",
-    sto.progs[1].T[0], sto.progs[1].HM[0],
-    sto.progs[1].T[1], sto.progs[1].HM[1],
-    sto.progs[1].T[2], sto.progs[1].HM[2],
-    sto.progs[1].T[3], sto.progs[1].HM[3],
-    sto.progs[1].T[4], sto.progs[1].HM[4],
-    sto.progs[1].T[5], sto.progs[1].HM[5]);
-  if(DEBUG) {
-      Serial.println(buffer);
-      Serial.println(strlen(buffer));
-  }
-  client.println(buffer);
-}
-
-void page13(WiFiClient &client) {
-  memset(buffer, 0, sizeof(buffer));
-  sprintf(buffer, "\
-  <!DOCTYPE HTML>\
-  <html><body>\
-  <h1>CT2_FA</h1>\
-  <h2>Early+Evening:</h2>T[Deg*10] HM[0xhhmm]\
-  <form method=get>\
-    <input type=text size=1 name=T12 value=%d><input type=text size=4 name=HM12 value=0x%.04x>\
-    <input type=text size=1 name=T13 value=%d><input type=text size=4 name=HM13 value=0x%.04x>\
-    <input type=text size=1 name=T14 value=%d><input type=text size=4 name=HM14 value=0x%.04x>\
-    <input type=text size=1 name=T15 value=%d><input type=text size=4 name=HM15 value=0x%.04x>\
-    <input type=text size=1 name=T16 value=%d><input type=text size=4 name=HM16 value=0x%.04x>\
-    <input type=text size=1 name=T17 value=%d><input type=text size=4 name=HM17 value=0x%.04x>\
-    <input type=submit value=Change+Store>\
-  </form>\
-  </body></html>\n",
-    sto.progs[2].T[0], sto.progs[2].HM[0],
-    sto.progs[2].T[1], sto.progs[2].HM[1],
-    sto.progs[2].T[2], sto.progs[2].HM[2],
-    sto.progs[2].T[3], sto.progs[2].HM[3],
-    sto.progs[2].T[4], sto.progs[2].HM[4],
-    sto.progs[2].T[5], sto.progs[2].HM[5]);
-  if(DEBUG) {
-      Serial.println(buffer);
-      Serial.println(strlen(buffer));
-  }
-  client.println(buffer);
-}
-
-void page14(WiFiClient &client) {
-  memset(buffer, 0, sizeof(buffer));
-  sprintf(buffer, "\
-  <!DOCTYPE HTML>\
-  <html><body>\
-  <h1>CT2_FA</h1>\
-  <h2>maiNtenance:</h2>T[Deg*10] HM[0xhhmm]\
-  <form method=get>\
-    <input type=text size=1 name=T18 value=%d><input type=text size=4 name=HM18 value=0x%.04x>\
-    <input type=text size=1 name=T19 value=%d><input type=text size=4 name=HM19 value=0x%.04x>\
-    <input type=text size=1 name=T20 value=%d><input type=text size=4 name=HM20 value=0x%.04x>\
-    <input type=text size=1 name=T21 value=%d><input type=text size=4 name=HM21 value=0x%.04x>\
-    <input type=text size=1 name=T22 value=%d><input type=text size=4 name=HM22 value=0x%.04x>\
-    <input type=text size=1 name=T23 value=%d><input type=text size=4 name=HM23 value=0x%.04x>\
-    <input type=submit value=Change+Store>\
-  </form>\
-  </body></html>\n",
-    sto.progs[3].T[0], sto.progs[3].HM[0],
-    sto.progs[3].T[1], sto.progs[3].HM[1],
-    sto.progs[3].T[2], sto.progs[3].HM[2],
-    sto.progs[3].T[3], sto.progs[3].HM[3],
-    sto.progs[3].T[4], sto.progs[3].HM[4],
-    sto.progs[3].T[5], sto.progs[3].HM[5]);
   if(DEBUG) {
       Serial.println(buffer);
       Serial.println(strlen(buffer));
@@ -524,35 +402,43 @@ bool bDisconnect=false;
 long msLastConn=millis();
 long msLastStatus=millis();
 int timeout=10000;
-void checkConnection(long msNow) {
+int tryCount=0;
+int status = WL_IDLE_STATUS;
+bool checkConnection(long msNow) {
   if(msNow>msLastStatus+1000) {
     status=WiFi.status();
     msLastStatus=msNow;
   }
   // attempt to connect to Wifi network:
   if(status!=WL_CONNECTED) {
-    isOnAir=false;
-    if(msNow>msLastConn+timeout) {
+    bOnLine=false;
+    ipAddr="?.?.?.?";
+    int h=0;
+    if(bOnLine)
+      h=hour();
+    if(msNow>msLastConn+timeout && (!bOnLine ||(h>5 && h<23))) {
       if(DEBUG) {
         Serial.println(status);
         Serial.print("Attempting to connect to SSID: ");
-        Serial.println(ssid);
+        Serial.println(ssid[tryCount]);
       }
-      // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-      status = WiFi.begin(ssid, pass);
+      status = WiFi.begin(ssid[tryCount].c_str(), pass[tryCount].c_str());
+      tSSID=ssid[tryCount];
+      tryCount=(tryCount+1)%MAX_NETWORKS;
       msLastConn=msNow;
       bDisconnect=true;
-      if(timeout<60000)
+      if(tryCount==0 && timeout<60000)
         timeout+=10000;
     }
   }
   else if(bDisconnect) {
     if(DEBUG)
       Serial.println("Connected to wifi");
-    // print wifi status---------------------------------
+    // print wifi status--------------------------------------------------------
+    tSSID=WiFi.SSID();
     if(DEBUG) {
       Serial.print("SSID: ");
-      Serial.println(WiFi.SSID());
+      Serial.println(tSSID);
     }
     // print your board's IP address:
     IPAddress ip = WiFi.localIP();
@@ -564,22 +450,206 @@ void checkConnection(long msNow) {
     sprintf(text, "%d.%d.%d.%d\0", ip[0], ip[1], ip[2], ip[3]);
     ipAddr=text;
     // print the received signal strength:
-    long rssi = WiFi.RSSI();
+    RSSI = WiFi.RSSI();
     if(DEBUG) {
       Serial.print("signal strength (RSSI):");
-      Serial.print(rssi);
+      Serial.print(RSSI);
       Serial.println(" dBm");
     }
-    //---------------------------------------------------
-    if(now()<1000) {
-      setSyncProvider(getNtpTime);
-      setSyncInterval(3600); // every hour re-sync
-      server.begin();
-      if(DEBUG)
-        Serial.println("Starting connection to server...");
+    //--------------------------------------------------------------------------
+    if(!okTime) { // ??? is possible to re-run ???
+      ArduinoOTA.begin(WiFi.localIP(), OTA_USER, OTA_PSWD, InternalStorage);
+      WEBserver.begin();
     }
+    if(DEBUG)
+      Serial.println("Starting connection to server...");
     bDisconnect=false;
-    isOnAir=true;
+    bOnLine=true;
     timeout=10000;
   }
+  return bOnLine;
+}
+
+// MAIL sender -----------------------------------------------------------------
+#include "Base64.h"
+byte response(WiFiSSLClient client);
+void encode64(String InputString, char *res);
+
+bool sendMail() {
+  bool bRet=true;
+  const String gAcc   = SECRET_SEND_ACCOUNT, gPass  = SECRET_SEND_ACCOUNT_PASSWORD;
+  int encodedLength = Base64.encodedLength(gAcc.length());
+  char encodedAccount[encodedLength+1];
+  encode64(gAcc, encodedAccount);
+  encodedAccount[encodedLength] = '\0';
+
+  encodedLength = Base64.encodedLength(gPass.length());
+  char encodedPass[encodedLength+1];
+  encode64(gPass, encodedPass);
+  encodedPass[encodedLength] = '\0';
+
+  if(DEBUG)
+    Serial.println("\nConnecting to server: " + String(SMTP_SERVER) +":" +String(465));
+
+  WiFiSSLClient client;
+
+  if (client.connectSSL(SMTP_SERVER, 465)==1){
+    if(DEBUG)
+      Serial.println("Connected to server");
+    if (response(client) ==-1){
+      String s = SMTP_SERVER + String(" port:")+ String(465);
+      if(DEBUG) {
+        Serial.print("no reply on connect to ");
+        Serial.println(s);
+        bRet=false;
+      }
+    }
+
+    if(DEBUG)
+      Serial.println("Sending Extended Hello: <start>EHLO underroof.allevis.org<end>");
+    client.println("EHLO underroof.allevis.org");
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply EHLO underroof.allevis.org");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending auth login: <start>AUTH LOGIN<end>");
+    client.println(F("AUTH LOGIN"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply AUTH LOGIN");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending account: <start>" +String(encodedAccount) + "<end>");
+    client.println(F(encodedAccount));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply to Sending User");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending Password: <start>" +String(encodedPass) + "<end>");
+    client.println(F(encodedPass));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending Password");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending From: <start>MAIL FROM: <fabrizio.allevi@tiscali.it><end>");
+    client.println(F("MAIL FROM: <fabrizio.allevi@tiscali.it>"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending From");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending To: <start>RCPT To: <fabrizio.allevi@gmail.com><end>");
+    client.println(F("RCPT To: <fabrizio.allevi@gmail.com>"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending To");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending DATA: <start>DATA<end>");
+    client.println(F("DATA"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending DATA");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending email: <start>");
+    client.println(F("To: Admin <fabrizio.allevi@gmail.com>"));
+
+    client.println(F("From: MK1010 <fabrizio.allevi@tiscali.it>"));
+    client.println(F("Subject: underroof data"));
+    float f;
+    int maxpkt=100;
+    int npkt=0;
+    while(npkt<1440) {
+      memset(buffer, 0, sizeof(buffer));
+      maxpkt=(1440-npkt<maxpkt)?1440-npkt:100;
+      int wc=0;
+      for(int i=0; i<maxpkt; i++) {
+        int d=i+npkt;
+        f=ld[d]&0x0FFF;
+        f/=10;
+        wc+=sprintf(buffer+wc, "%.1f,%d,%d,%d\n", f, ld[d]&0x8000?1:0, ld[d]&0x4000?1:0, ld[d]&0x2000?1:0);
+      }
+      npkt+=maxpkt;
+      if(DEBUG)
+        Serial.print(buffer);
+      client.print(F(buffer));
+    }
+    if(DEBUG)
+      Serial.println("");
+    client.println(F(""));
+
+    client.println(F("."));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending '.'");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println(F("Sending QUIT"));
+    client.println(F("QUIT"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending QUIT");
+      bRet=false;
+    }
+    client.stop();
+  }
+  else{
+    if(DEBUG)
+      Serial.println("failed to connect to server");
+    bRet=false;
+  }
+  if(DEBUG)
+    Serial.println("Done.");
+  return bRet;
+}
+
+byte response(WiFiSSLClient client){
+  // Wait for a response for up to X seconds
+  int loopCount = 0;
+  while (!client.available()) {
+    delay(1);
+    loopCount++;
+    // if nothing received for 1O00 milliseconds, timeout
+    if (loopCount > 10000) {
+      //client.stop();
+      if(DEBUG)
+        Serial.println(F("Timeout"));
+      return -1;
+    }
+  }
+
+  // Take a snapshot of the response code
+  byte respCode = client.peek();
+  if(DEBUG)
+    Serial.print("response: <start>");
+  while (DEBUG && client.available()){
+    Serial.write(client.read());
+  }
+  if(DEBUG)
+    Serial.println("<end>");
+
+  if (respCode >= '4'){
+    if(DEBUG) {
+      Serial.print("Failed in eRcv with response: ");
+      Serial.println(respCode);
+    }
+    return 0;
+  }
+  return 1;
+}
+void encode64(String InputString, char *res){
+  int inputStringLength = InputString.length();
+  const char *inputString = InputString.c_str();
+  Base64.encode(res, (char*)inputString, inputStringLength);
 }

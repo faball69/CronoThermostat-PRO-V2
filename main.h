@@ -5,8 +5,8 @@
  */
 
 // defines
-//#define DEBUG true
-#define DEBUG false
+#define DEBUG true
+//#define DEBUG false
 
 #define CALDAIA 4 // digital pin out 4
 #define LEVEL_ZERO 0
@@ -28,6 +28,9 @@
 void initWifiService();
 void runWifiService();
 void saveDataFlash();
+bool sendMail();
+bool updateNtpTime();
+bool checkConnection(long msNow);
 // temp
 void initTempService();
 float readTemp();
@@ -49,6 +52,7 @@ void normalDimmer();
 void changeDimmer();
 void setDimmer(int d);
 void drawbitmap(int posx, int posy);
+void netbitmap(int posx, int posy);
 // scheduler
 void scheduler();
 
@@ -74,5 +78,9 @@ struct stStorage {
 extern stStorage sto;
 extern bool bFire;
 extern String ipAddr;
-extern bool isOnAir;
+extern String tSSID;
+extern long RSSI;
+extern bool bOnLine;
 extern float fLastTemp;
+extern short ld[1440];
+extern bool okTime;

@@ -25,8 +25,10 @@ bool bIdleState = true;
 bool bForce=false;
 long lastOp=0;
 float fLastTemp=0.0f;
+short ld[1440];
 
 void setup() {
+  memset(ld, 0, sizeof(ld));
   // Open serial communications and wait for port to open:
   if (DEBUG) {
     Serial.begin(9600);
@@ -49,25 +51,35 @@ void setup() {
 
 long lastUpd=0;
 int aux=0;
-int page=0; //0=idle 1=force 2=prog
+int page=0; //0=idle 1=force 2=ofs 3=prog 4=setting
 bool bModify=false;
+bool okTime=false;
 void loop() {
-  runWifiService();
   long nowTime=millis();
+  int h=0;
+  if(now()>1000) {
+    okTime=true;
+  }
+  if(!okTime && checkConnection(nowTime)) {
+    if(!okTime)
+      updateNtpTime();
+    else
+        h=hour();
+    if(h>5 && h<23)
+      runWifiService();
+  }
   int dir = getDir();
   bool sw = getSwitch();
   if(!bModify) {  // volta pagina
-    if(dir) {
+    if(dir)
       lastOp=nowTime;
-    }
-    else if(nowTime>lastOp+10000) {
+    else if(nowTime>lastOp+10000)
       aux=0;
-    }
     aux+=dir;
     if(aux<0)
       aux=0;
-    if(aux>12)
-      aux=12;
+    if(aux>=16)
+      aux=16;
     page=aux/4;
     // pages handling
     if(page==0) { // idle page
@@ -75,26 +87,31 @@ void loop() {
         fLastTemp = readTemp();
         idlePage();
         lastUpd=nowTime;
-        scheduler();
+        if(okTime)
+          scheduler();
       }
     }
     else if(page==1) {  // force page
       forcePage(sto.forceData.hForce);
     }
-    else if(page==2) {  // program page
+    else if(page==2) {  // settings page
+      ofsPage(sto.forceData.ofsTemp);
+    }
+    else if(page==3) {  // program page
       programPage();
     }
-    else if(page==3) {  // settings page
-      settingsPage(isOnAir?'@':'#');
-      //settingsPage('o');
+    else if(page==4) {  // settings page
+      settingsPage(bOnLine?'@':'#');
     }
-    if(sw && (page==1 || page==3)) {
+    if(sw && (page==1 || page==2 || page==4)) {
       bModify=true;
       lastOp=nowTime;
       if(page==1)
         aux=sto.forceData.hForce*4;
-      else if(page==3)
-        settingsPage('R');
+      else if(page==2)
+        aux=sto.forceData.ofsTemp;
+      else if(page==4)
+        aux=0;
     }
   }
   else {  // modifica
@@ -118,11 +135,50 @@ void loop() {
           }
         }
       }
-      else if(page==3) {
-        if(sw) {
-          settingsPage('>');
-          delay(1000);
-          NVIC_SystemReset(); // system reset
+      else if(page==2) {
+        if(dir) {
+          aux+=dir;
+          lastOp=nowTime;
+        }
+        ofsPage(aux);
+        if(sw && aux!=sto.forceData.ofsTemp) {
+          sto.forceData.ofsTemp=aux;
+          saveDataFlash();  // save in storage wifi /fs/ flash
+          page=0;
+          aux=0;
+          bModify=false;
+        }
+      }
+      else if(page==4) {
+        if(dir) {
+          aux+=dir;
+          lastOp=nowTime;
+        }
+        if(aux<0)
+          aux=0;
+        if(aux>=4)
+          aux=4;
+        if(aux<4) {
+          settingsPage('S');
+          if(sw) {
+            if(bOnLine && sendMail())
+              memset(ld, 0, sizeof(ld));
+            else {
+              settingsPage('X');
+              delay(1000);
+            }
+            page=0;
+            aux=0;
+            bModify=false;
+          }
+        }
+        else {
+          settingsPage('R');
+          if(sw) {
+            settingsPage('>');
+            delay(1000);
+            NVIC_SystemReset(); // system reset
+          }
         }
       }
     }
@@ -132,13 +188,16 @@ void loop() {
       bModify=false;
     }
   }
+  if(okTime)
+    addLog();
 }
 
 void idlePage() {
   char text[100];
-  sprintf(text, "%.1f", fLastTemp);
   clearOled();
   drawbitmap(100, 10);
+  netbitmap(116, 0);
+  sprintf(text, "%.1f", fLastTemp);
   printOled(text, 20, 8, 3, true);
 }
 
@@ -148,6 +207,15 @@ void forcePage(int hour) {
   sprintf(text, "Force for....\n");
   printOled(text, 0, 0, 1, false);
   sprintf(text, "%d hour!", hour);
+  printOled(text, 0, 10, 2, true);
+}
+
+void ofsPage(int ofs) {
+  char text[100];
+  clearOled();
+  sprintf(text, "Set Offset...\n");
+  printOled(text, 0, 0, 1, false);
+  sprintf(text, "%ddeg/10!", ofs);
   printOled(text, 0, 10, 2, true);
 }
 
@@ -180,10 +248,35 @@ void settingsPage(char c) {
     sprintf(text, "click knob for Reset!");
     printOled(text, 0, 10, 1, false);
   }
-  if(c=='>') {
+  else if(c=='>') {
     sprintf(text, "reset in progress!");
     printOled(text, 0, 10, 1, false);
   }
+  else {
+    sprintf(text, "SSID: %s", tSSID.c_str());
+    printOled(text, 0, 10, 1, false);
+    sprintf(text, "RSSI: %ddBm", RSSI);
+    printOled(text, 0, 20, 1, false);
+  }
   sprintf(text, "%c", c);
   printOled(text, 120, 25, 1, true);
+}
+
+void addLog() {
+  int hh = hour();
+  int minuteNow = hh * 60 + minute();
+  if(ld[minuteNow]==0) {
+    ld[minuteNow]=((short)(fLastTemp*10))&0x0FFF| /*temp lowBits*/
+                   (bFire?1<<15:0)| /* 0x8000 is caldaia */
+                   (sto.forceData.hForce?1<<14:0)|  /* 0x4000 is force state */
+                   (bOnLine?1<<13:0); /* 0x2000 is wifi state */
+    /*if(ld[minuteNow+1]!=0 && sendMail())
+        memset(ld, 0, sizeof(ld));*/
+    ld[minuteNow+1]=0;
+    if(DEBUG) {
+      char text[100];
+      sprintf(text, "log: %.04x", ld[minuteNow]);
+      Serial.println(text);
+    }
+  }
 }

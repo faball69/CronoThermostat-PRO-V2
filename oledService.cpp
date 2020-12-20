@@ -52,6 +52,24 @@ static const unsigned char PROGMEM off_bmp[] =
   B11000001, B10000011,
   B11000001, B10000011,
   B11111111, B11111111 };
+  static const unsigned char PROGMEM wifi_bmp[] =
+  { B01111110,
+    B11000011,
+    B00000000,
+    B00111100,
+    B01100110,
+    B00000000,
+    B00011000,
+    B00011000};
+  static const unsigned char PROGMEM nowifi_bmp[] =
+  { B11000011,
+    B01100110,
+    B00100100,
+    B00011000,
+    B00011000,
+    B00100100,
+    B01100110,
+    B11000011};
 
 void initOled() {
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
@@ -119,7 +137,7 @@ void blinkOled(bool bOn) {
 void scrollOled(bool bOn) {
   if(bOn)
     display.startscrollright(0x00, 0x0F);
-  else 
+  else
     display.stopscroll();
 }
 
@@ -129,4 +147,11 @@ void drawbitmap(int posx, int posy) {
     display.drawBitmap(posx, posy, fire_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
   else
     display.drawBitmap(posx, posy, off_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
+}
+
+void netbitmap(int posx, int posy) {
+  if(bOnLine)
+    display.drawBitmap(posx, posy, wifi_bmp, 8, 8, 1);
+  else
+    display.drawBitmap(posx, posy, nowifi_bmp, 8, 8, 1);
 }
