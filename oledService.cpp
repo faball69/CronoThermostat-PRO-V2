@@ -141,16 +141,16 @@ void scrollOled(bool bOn) {
     display.stopscroll();
 }
 
-void drawbitmap(int posx, int posy) {
+void fireBitmap(int posx, int posy, bool b) {
   //display.drawBitmap((display.width()-LOGO_WIDTH )/2, (display.height()-LOGO_HEIGHT)/2, fire_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
-  if(bFire)
+  if(b)
     display.drawBitmap(posx, posy, fire_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
   else
     display.drawBitmap(posx, posy, off_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
 }
 
-void netbitmap(int posx, int posy) {
-  if(bOnLine)
+void netBitmap(int posx, int posy, bool b) {
+  if(b)
     display.drawBitmap(posx, posy, wifi_bmp, 8, 8, 1);
   else
     display.drawBitmap(posx, posy, nowifi_bmp, 8, 8, 1);

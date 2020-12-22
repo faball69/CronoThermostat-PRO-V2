@@ -5,8 +5,8 @@
  */
 
 // defines
-#define DEBUG true
-//#define DEBUG false
+//#define DEBUG true
+#define DEBUG false
 
 #define CALDAIA 4 // digital pin out 4
 #define LEVEL_ZERO 0
@@ -23,6 +23,8 @@
 
 #include <Arduino.h>
 #include <TimeLib.h>
+#include <WiFiNINA.h>
+
 
 // wifi + store
 void initWifiService();
@@ -30,7 +32,10 @@ void runWifiService();
 void saveDataFlash();
 bool sendMail();
 bool updateNtpTime();
-bool checkConnection(long msNow);
+bool tryConnection(long msNow);
+bool checkWifiStatus();
+void initWeb();
+void resetWifi(int level);  // 0=reset 1=reset+cnt+tmt 2=stopWifi
 // temp
 void initTempService();
 float readTemp();
@@ -51,8 +56,8 @@ void lowDimmer();
 void normalDimmer();
 void changeDimmer();
 void setDimmer(int d);
-void drawbitmap(int posx, int posy);
-void netbitmap(int posx, int posy);
+void fireBitmap(int posx, int posy, bool b);
+void netBitmap(int posx, int posy, bool b);
 // scheduler
 void scheduler();
 
@@ -80,7 +85,6 @@ extern bool bFire;
 extern String ipAddr;
 extern String tSSID;
 extern long RSSI;
-extern bool bOnLine;
 extern float fLastTemp;
 extern short ld[1440];
-extern bool okTime;
+extern int wifiStatus;
