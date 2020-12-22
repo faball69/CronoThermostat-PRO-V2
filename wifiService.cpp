@@ -8,8 +8,8 @@
 #include "main.h"
 
 #include "secret.h"
-String ssid[MAX_NETWORKS]={SECRET_SSID_P, SECRET_SSID_0, SECRET_SSID_1, SECRET_SSID_2};
-String pass[MAX_NETWORKS]={SECRET_PASS_P, SECRET_PASS_0, SECRET_PASS_1, SECRET_PASS_2};
+String ssid[MAX_NETWORKS]={SECRET_SSID_0, SECRET_SSID_1};
+String pass[MAX_NETWORKS]={SECRET_PASS_0, SECRET_PASS_1};
 
 // exported
 String ipAddr="?.?.?.?";
@@ -19,9 +19,9 @@ bool bOnLine=false;
 
 // storage
 stStorage preSto =  {true,
-                    {{{ 200, 190, 200, 190, 200, 190 }, { 0x071E, 0x091E, 0x0B00, 0x0D00, 0x0F00, 0x1700 }},
-                    {{ 200, 190, 200, 190, 190, 190 }, { 0x071E, 0x091E, 0x0F00, 0x1700, 0x0000, 0x0000 }},
-                    {{ 200, 190, 200, 190, 190, 190 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
+                    {{{ 210, 195, 210, 195, 210, 195 }, { 0x071E, 0x091E, 0x0B00, 0x0D00, 0x0F00, 0x1700 }},
+                    {{ 210, 195, 210, 195, 195, 195 }, { 0x071E, 0x091E, 0x0F00, 0x1700, 0x0000, 0x0000 }},
+                    {{ 210, 195, 210, 195, 195, 195 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
                     {{ 170, 170, 170, 170, 170, 170 }, { 0x0000, 0x173B, 0x0000, 0x0000, 0x0000, 0x0000 }}},
                     { 0, 2, 2, 2, 2, 2, 1 },
                     { 0, 0, -25, 210, 15, false}};

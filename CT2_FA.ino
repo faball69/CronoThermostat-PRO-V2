@@ -119,7 +119,7 @@ void loop() {
       lastOp=nowTime;
       settingsPage("net");
     }
-    if(sw) {
+    if(sw && (page==1||page==2||(page==3&&!okTime)||page==4)) {
       bModify=true;
       lastOp=nowTime;
       if(page==1)
