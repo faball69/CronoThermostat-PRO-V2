@@ -5,6 +5,9 @@
 */
 
 #include "main.h"
+#include <WDTZero.h>
+// watchdog 16s
+WDTZero wdt;
 
 // globals
 String sDays[MAX_DAYS] = { "Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab" };
@@ -39,9 +42,10 @@ void setup() {
   if(DEBUG)
     Serial.println("setup terminated!");
   lastOp=millis()-10000;
+  wdt.setup(WDT_HARDCYCLE16S);
 }
 
-long lastUpd=0;
+long lastUpd=-6000;
 int aux=16; // start in page==4
 int page=0; //0=idle 1=force 2=ofs 3=prog 4=setting
 int subPage=-1;
@@ -62,9 +66,12 @@ void loop() {
   }
   // Time?
   int h=0;
-  if(year()>=2020) {
+  if(!okTime && year()>=2020) {
     okTime=true;
+    resetMail();
+    resetWifi(2);
   }
+  addLog();
   // wifi
   if(okTime) {
     h=hour();
@@ -206,8 +213,8 @@ void loop() {
         if(aux<3) {
           settingsPage(">", 3);
           if(sw) {
-            if(wifiStatus==WL_CONNECTED && sendMail()) {
-              memset(ld, 0, sizeof(ld));
+            if(wifiStatus==WL_CONNECTED && dataMail()) {
+              //memset(ld, 0, sizeof(ld));
               settingsPage("ok", 3);
             }
             else
@@ -255,8 +262,7 @@ void loop() {
       bModify=false;
     }
   }
-  if(okTime)
-    addLog();
+  wdt.clear();
 }
 
 void idlePage() {
@@ -293,13 +299,8 @@ void programPage() {
   sprintf(text, "%s %d %s %d %.02d:%.02d\n", sDays[wd].c_str(), day(), sMonth[month()-1].c_str(), year(), hour(), minute());
   printOled(text, 0, 0, 1, false);
   int prg=sto.weekProg[wd];
-  int i1, i2=-1;
-  int tp, tn=hour()*60+minute();
-  do {
-    i2++;
-    tp=(sto.progs[prg].HM[i2]>>8)*60+(sto.progs[prg].HM[i2]&0xFF);
-  } while(tp<tn && i2<6);
-  i1=i2-1;
+  int i1, i2;
+  findNextCheckPoint(prg, i1, i2);
   sprintf(text, "__%.1f   %.1f__\n", ((float)(sto.progs[prg].T[i1]))/10.0f, ((float)(sto.progs[prg].T[i2]))/10.0f);
   printOled(text, 18, 14, 1, false);
   sprintf(text, "__%.02d:%.02d %.02d:%.02d__\n", sto.progs[prg].HM[i1]>>8, sto.progs[prg].HM[i1]&0xFF, sto.progs[prg].HM[i2]>>8, sto.progs[prg].HM[i2]&0xFF);
@@ -380,21 +381,26 @@ void settingsPage(const char *t, int par/*=0*/) {
   printOled(text, 100, 25, 1, true);
 }
 
+int lastWrote=-1;
 void addLog() {
   int hh = hour();
   int minuteNow = hh * 60 + minute();
-  if(ld[minuteNow]==0) {
+  if(minuteNow!=lastWrote) {
+    bool b=((ld[minuteNow]&0x1000)?true:false)||!okTime;  // mantiene l'informazione di okTime non a posto
     ld[minuteNow]=((short)(fLastTemp*10))&0x0FFF| /*temp lowBits*/
                    (bFire?1<<15:0)| /* 0x8000 is caldaia */
                    (sto.forceData.hForce?1<<14:0)|  /* 0x4000 is force state */
-                   (wifiStatus==WL_CONNECTED?1<<13:0); /* 0x2000 is wifi state */
-    /*if(ld[minuteNow+1]!=0 && sendMail())
-        memset(ld, 0, sizeof(ld));*/
-    ld[minuteNow+1]=0;
+                   (wifiStatus==WL_CONNECTED?1<<13:0)| /* 0x2000 is wifi state */
+                   (b?1<<12:0); /* 0x1000 is not okTime */
+    if(ld[(minuteNow+1)%1440]&0x1000)
+      ld[(minuteNow+1)%1440]=0x1000;  // mantiene l'informazione di okTime non a posto
+    else
+      ld[(minuteNow+1)%1440]=0;
     if(DEBUG) {
       char text[100];
       sprintf(text, "log: %.04x", ld[minuteNow]);
       Serial.println(text);
     }
+    lastWrote=minuteNow;
   }
 }

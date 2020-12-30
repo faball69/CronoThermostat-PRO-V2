@@ -9,7 +9,7 @@
 bool bFire = false;
 void scheduler() {
   int hh = hour();
-  int minuteNow = hh * 60 + minute();
+  int minuteNow = hh*60+minute();
   int idProg = sto.weekProg[weekday()-1];
   if (DEBUG) {
     Serial.print("minuteNow=");
@@ -40,29 +40,16 @@ void scheduler() {
   }
   else {
     // check sequences
-    for (int seq = 0; seq < MAX_SEQ - 1; seq++) {
-      int minI = (sto.progs[idProg].HM[seq] >> 8) * 60 + (sto.progs[idProg].HM[seq] & 0xFF);
-      int minF = (sto.progs[idProg].HM[seq + 1] >> 8) * 60 + (sto.progs[idProg].HM[seq + 1] & 0xFF);
-      if (minI <= minuteNow && (minuteNow < minF || minF == 0)) { // trovata la seq in corso
-        float setPtemp = sto.progs[idProg].T[seq]; // setpoint di temperatura da tenere in questa sequenza
-        setPtemp /= 10.0;
-        if (DEBUG) {
-          Serial.print("seq=");
-          Serial.print(seq);
-          Serial.print(" minI=");
-          Serial.print(minI);
-          Serial.print(" minF=");
-          Serial.print(minF);
-          Serial.print(" temp=");
-          Serial.println(setPtemp);
-        }
-        if ((!bFire && fLastTemp < setPtemp) || (bFire && fLastTemp < (setPtemp + fht)))
-          bFire = true;
-        else
-          bFire = false;
-        break;
-      }
-    }
+    int i1, i2;
+    findNextCheckPoint(idProg, i1, i2);
+    float setPtemp = sto.progs[idProg].T[i1]; // setpoint di temperatura da tenere in questa sequenza
+    setPtemp /= 10.0;
+    if(setPtemp>fmt)
+      setPtemp=fmt;
+    if ((!bFire && fLastTemp < setPtemp) || (bFire && fLastTemp < (setPtemp + fht)))
+      bFire = true;
+    else
+      bFire = false;
   }
   // caldaia
   if (bFire && !sto.forceData.bOFF) {
@@ -70,5 +57,34 @@ void scheduler() {
   }
   else {
     digitalWrite(CALDAIA, HIGH);
+  }
+}
+
+void findNextCheckPoint(int prg, int &i1, int &i2) {
+  i1=0; i2=1;
+  int tp, tn=hour()*60+minute();
+  for(i2=0; i2<MAX_SEQ; i2++) {
+    tp=(sto.progs[prg].HM[i2]>>8)*60+(sto.progs[prg].HM[i2]&0xFF);
+    if(tp>tn || sto.progs[prg].T[i2]==0)
+      break;
+  }
+  if(i2==0)
+    i1=MAX_SEQ-1;
+  else if(i2==MAX_SEQ) {
+    i1=MAX_SEQ-1;
+    i2=0;
+  }
+  else {
+    i1=i2-1;
+    if(sto.progs[prg].T[i2]==0)
+      i2=0;
+  }
+  if (DEBUG) {
+    Serial.print("i1=");
+    Serial.print(i1);
+    Serial.print(" i2=");
+    Serial.print(i2);
+    Serial.print(" temp=");
+    Serial.println(sto.progs[prg].T[i1]);
   }
 }

@@ -30,7 +30,8 @@
 void initWifiService();
 void runWifiService();
 void saveDataFlash();
-bool sendMail();
+bool dataMail();
+bool resetMail();
 bool updateNtpTime();
 bool tryConnection(long msNow);
 bool checkWifiStatus();
@@ -60,6 +61,7 @@ void fireBitmap(int posx, int posy, bool b);
 void netBitmap(int posx, int posy, bool b);
 // scheduler
 void scheduler();
+void findNextCheckPoint(int prg, int &i1, int &i2);
 
 // globals temp in °C/10
 struct stForce {

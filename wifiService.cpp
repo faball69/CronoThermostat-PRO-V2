@@ -8,8 +8,8 @@
 #include "main.h"
 
 #include "secret.h"
-String ssid[MAX_NETWORKS]={SECRET_SSID_0, SECRET_SSID_1};
-String pass[MAX_NETWORKS]={SECRET_PASS_0, SECRET_PASS_1};
+String ssid[MAX_NETWORKS]={SECRET_SSID_1, SECRET_SSID_0};
+String pass[MAX_NETWORKS]={SECRET_PASS_1, SECRET_PASS_0};
 
 // exported
 String ipAddr="?.?.?.?";
@@ -20,11 +20,11 @@ bool bOnLine=false;
 // storage
 stStorage preSto =  {true,
                     {{{ 210, 195, 210, 195, 210, 195 }, { 0x071E, 0x091E, 0x0B00, 0x0D00, 0x0F00, 0x1700 }},
-                    {{ 210, 195, 210, 195, 195, 195 }, { 0x071E, 0x091E, 0x0F00, 0x1700, 0x0000, 0x0000 }},
-                    {{ 210, 195, 210, 195, 195, 195 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
-                    {{ 170, 170, 170, 170, 170, 170 }, { 0x0000, 0x173B, 0x0000, 0x0000, 0x0000, 0x0000 }}},
+                    {{ 210, 195, 210, 195, 000, 000 }, { 0x071E, 0x091E, 0x0F00, 0x1700, 0x0000, 0x0000 }},
+                    {{ 210, 195, 210, 195, 000, 000 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
+                    {{ 170, 170, 000, 000, 000, 000 }, { 0x0500, 0x173B, 0x0000, 0x0000, 0x0000, 0x0000 }}},
                     { 0, 2, 2, 2, 2, 2, 1 },
-                    { 0, 0, -25, 210, 15, false}};
+                    { 0, 0, -25, 220, 15, false}};
 stStorage sto;
 void saveDataFlash() {
   WiFiStorageFile s = WiFiStorage.open("/fs/CT2_Storage");
@@ -234,8 +234,8 @@ bool tryConnection(long msNow) {
 byte response(WiFiSSLClient client);
 void encode64(String InputString, char *res);
 
-bool sendMail() {
-  char buffer[1200];
+bool dataMail() {
+  char buffer[1500];
   bool bRet=true;
   const String gAcc   = SECRET_SEND_ACCOUNT, gPass  = SECRET_SEND_ACCOUNT_PASSWORD;
   int encodedLength = Base64.encodedLength(gAcc.length());
@@ -326,25 +326,155 @@ bool sendMail() {
     client.println(F("To: Admin <fabrizio.allevi@gmail.com>"));
 
     client.println(F("From: MK1010 <fabrizio.allevi@tiscali.it>"));
-    client.println(F("Subject: underroof data"));
+    client.println(F("Subject: CT2_FA data"));
     float f;
-    int maxpkt=100;
+    int maxpkt=80;
     int npkt=0;
     while(npkt<1440) {
       memset(buffer, 0, sizeof(buffer));
-      maxpkt=(1440-npkt<maxpkt)?1440-npkt:100;
+      maxpkt=(1440-npkt<maxpkt)?1440-npkt:80;
       int wc=0;
       for(int i=0; i<maxpkt; i++) {
         int d=i+npkt;
         f=ld[d]&0x0FFF;
         f/=10;
-        wc+=sprintf(buffer+wc, "%.1f,%d,%d,%d\n", f, ld[d]&0x8000?1:0, ld[d]&0x4000?1:0, ld[d]&0x2000?1:0);
+        wc+=sprintf(buffer+wc, "%.04d,%.1f,%d,%d,%d,%d\n", d, f, ld[d]&0x8000?1:0, ld[d]&0x4000?1:0, ld[d]&0x2000?1:0, ld[d]&0x1000?1:0);
       }
       npkt+=maxpkt;
       if(DEBUG)
         Serial.print(buffer);
       client.print(F(buffer));
     }
+    if(DEBUG)
+      Serial.println("");
+    client.println(F(""));
+
+    client.println(F("."));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending '.'");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println(F("Sending QUIT"));
+    client.println(F("QUIT"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending QUIT");
+      bRet=false;
+    }
+    client.stop();
+  }
+  else{
+    if(DEBUG)
+      Serial.println("failed to connect to server");
+    bRet=false;
+  }
+  if(DEBUG)
+    Serial.println("Done.");
+  return bRet;
+}
+
+bool resetMail() {
+  bool bRet=true;
+  const String gAcc   = SECRET_SEND_ACCOUNT, gPass  = SECRET_SEND_ACCOUNT_PASSWORD;
+  int encodedLength = Base64.encodedLength(gAcc.length());
+  char encodedAccount[encodedLength+1];
+  encode64(gAcc, encodedAccount);
+  encodedAccount[encodedLength] = '\0';
+
+  encodedLength = Base64.encodedLength(gPass.length());
+  char encodedPass[encodedLength+1];
+  encode64(gPass, encodedPass);
+  encodedPass[encodedLength] = '\0';
+
+  if(DEBUG)
+    Serial.println("\nConnecting to server: " + String(SMTP_SERVER) +":" +String(465));
+
+  WiFiSSLClient client;
+
+  if (client.connectSSL(SMTP_SERVER, 465)==1){
+    if(DEBUG)
+      Serial.println("Connected to server");
+    if (response(client) ==-1){
+      String s = SMTP_SERVER + String(" port:")+ String(465);
+      if(DEBUG) {
+        Serial.print("no reply on connect to ");
+        Serial.println(s);
+        bRet=false;
+      }
+    }
+
+    if(DEBUG)
+      Serial.println("Sending Extended Hello: <start>EHLO underroof.allevis.org<end>");
+    client.println("EHLO underroof.allevis.org");
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply EHLO underroof.allevis.org");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending auth login: <start>AUTH LOGIN<end>");
+    client.println(F("AUTH LOGIN"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply AUTH LOGIN");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending account: <start>" +String(encodedAccount) + "<end>");
+    client.println(F(encodedAccount));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply to Sending User");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending Password: <start>" +String(encodedPass) + "<end>");
+    client.println(F(encodedPass));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending Password");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending From: <start>MAIL FROM: <fabrizio.allevi@tiscali.it><end>");
+    client.println(F("MAIL FROM: <fabrizio.allevi@tiscali.it>"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending From");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending To: <start>RCPT To: <fabrizio.allevi@gmail.com><end>");
+    client.println(F("RCPT To: <fabrizio.allevi@gmail.com>"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending To");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending DATA: <start>DATA<end>");
+    client.println(F("DATA"));
+    if (DEBUG && response(client) ==-1){
+      Serial.println("no reply Sending DATA");
+      bRet=false;
+    }
+
+    if(DEBUG)
+      Serial.println("Sending email: <start>");
+    client.println(F("To: Admin <fabrizio.allevi@gmail.com>"));
+
+    client.println(F("From: MK1010 <fabrizio.allevi@tiscali.it>"));
+    client.println(F("Subject: CT2_FA reset"));
+
+    // data payload
+    char text[100];
+    clearOled();
+    int wd=weekday()-1;
+    sprintf(text, "\n%.04d-%.02d-%.02d %.02d:%.02d\ntemp=%.1f\nbFire=%d\nwifi=%d\n", year(), month(), day(), hour(), minute(), fLastTemp, (int)bFire, wifiStatus);
+    if(DEBUG)
+      Serial.print(text);
+    client.print(F(text));
     if(DEBUG)
       Serial.println("");
     client.println(F(""));
