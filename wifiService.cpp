@@ -19,9 +19,9 @@ bool bOnLine=false;
 
 // storage
 stStorage preSto =  {true,
-                    {{{ 210, 195, 210, 195, 210, 195 }, { 0x071E, 0x091E, 0x0B00, 0x0D00, 0x0F00, 0x1700 }},
-                    {{ 210, 195, 210, 195, 000, 000 }, { 0x071E, 0x091E, 0x0F00, 0x1700, 0x0000, 0x0000 }},
-                    {{ 210, 195, 210, 195, 000, 000 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
+                    {{{ 210, 195, 210, 195, 210, 190 }, { 0x071E, 0x091E, 0x0B00, 0x0D00, 0x0F00, 0x1700 }},
+                    {{ 210, 195, 210, 190, 000, 000 }, { 0x071E, 0x091E, 0x0F00, 0x1700, 0x0000, 0x0000 }},
+                    {{ 210, 195, 210, 190, 000, 000 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
                     {{ 170, 170, 000, 000, 000, 000 }, { 0x0500, 0x173B, 0x0000, 0x0000, 0x0000, 0x0000 }}},
                     { 0, 2, 2, 2, 2, 2, 1 },
                     { 0, 0, -25, 220, 15, false}};
@@ -67,6 +67,7 @@ void initFlash() {
 int wifiStatus, lastStatus;
 void initWifiService() {
   // check for the WiFi module:
+  WiFi.setTimeout(100); // I don't want hang code
   wifiStatus=lastStatus=WiFi.status();
   if (wifiStatus == WL_NO_MODULE) {
     if(DEBUG)
@@ -139,7 +140,7 @@ bool updateNtpTime() {
   }
   return false;
 }
-int wifiTimeout=10000;
+int wifiRetry=10000;
 long msLastConn=millis();
 long msLastStatus=millis();
 int tryCount=0;
@@ -149,7 +150,7 @@ void resetWifi(int level) {  // 0=reset 1=reset+cnt+tmt 2=disableWifi
   ipAddr="?.?.?.?";
   if(level==1) {
     tryCount=0;
-    wifiTimeout=10000;
+    wifiRetry=10000;
     lastStatus=wifiStatus=WL_DISCONNECTED;
   }
   else if(level==2) {
@@ -201,28 +202,28 @@ bool checkWifiStatus() {
     if(DEBUG)
       Serial.println("Starting connection to server...");
     bOnLine=true;
-    wifiTimeout=10000;
+    wifiRetry=10000;
   }
   return wifiStatus==WL_CONNECTED;
 }
 bool tryConnection(long msNow) {
   // attempt to connect to Wifi network:
   if(wifiStatus!=WL_CONNECTED && wifiStatus!=WL_NO_MODULE) {
-    if(msNow>msLastConn+wifiTimeout) {
+    if(msNow>msLastConn+wifiRetry) {
       if(DEBUG) {
         Serial.print("Attempting to connect to SSID: ");
         Serial.println(ssid[tryCount%MAX_NETWORKS]);
       }
-      /*wifiStatus =*/ WiFi.begin(ssid[tryCount%MAX_NETWORKS].c_str(), pass[tryCount%MAX_NETWORKS].c_str());
+      WiFi.begin(ssid[tryCount%MAX_NETWORKS].c_str(), pass[tryCount%MAX_NETWORKS].c_str());
       tSSID=ssid[tryCount%MAX_NETWORKS];
       tryCount++;
       msLastConn=msNow;
       if(tryCount>24)
-        wifiTimeout+=3600000; // hourly
+        wifiRetry+=3600000; // hourly
       else if(tryCount>12)
-        wifiTimeout+=60000; // minutely
+        wifiRetry+=60000; // minutely
       else
-        wifiTimeout=10000;  // ten second
+        wifiRetry=10000;  // ten second
       return true;
     }
   }
@@ -471,7 +472,7 @@ bool resetMail() {
     char text[100];
     clearOled();
     int wd=weekday()-1;
-    sprintf(text, "\n%.04d-%.02d-%.02d %.02d:%.02d\ntemp=%.1f\nbFire=%d\nwifi=%d\n", year(), month(), day(), hour(), minute(), fLastTemp, (int)bFire, wifiStatus);
+    sprintf(text, "\n%.04d-%.02d-%.02d %.02d:%.02d\ntemp=%.1f\nbFire=%d\n", year(), month(), day(), hour(), minute(), fLastTemp, (int)bFire);
     if(DEBUG)
       Serial.print(text);
     client.print(F(text));

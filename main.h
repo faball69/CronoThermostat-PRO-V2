@@ -90,3 +90,4 @@ extern long RSSI;
 extern float fLastTemp;
 extern short ld[1440];
 extern int wifiStatus;
+extern bool okTime;

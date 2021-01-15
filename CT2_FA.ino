@@ -61,35 +61,25 @@ void loop() {
   if(nowTime>lastUpd+5000) {
     fLastTemp = readTemp();
     lastUpd=nowTime;
-    if(okTime)
-      scheduler();
+    scheduler();
   }
   // Time?
   int h=0;
   if(!okTime && year()>=2020) {
     okTime=true;
     resetMail();
-    resetWifi(2);
+    //resetWifi(2);
   }
   addLog();
   // wifi
-  if(okTime) {
-    h=hour();
-    if(h>5 && h<23) {
-      if(checkWifiStatus())
-        runWifiService();
-      else
-        tryConnection(nowTime);
-    }
-    else if(wifiStatus==WL_CONNECTED)
-      resetWifi(1);
-  }
-  else {
-    if(checkWifiStatus())
-      updateNtpTime();
+  if(checkWifiStatus()) {
+    if(okTime)
+      runWifiService();
     else
-      tryConnection(nowTime);
+      updateNtpTime();
   }
+  else
+    tryConnection(nowTime);
   // menus
   if(!bModify) {  // volta pagina
     if(dir)

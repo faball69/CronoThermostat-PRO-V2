@@ -8,49 +8,53 @@
 
 bool bFire = false;
 void scheduler() {
-  int hh = hour();
-  int minuteNow = hh*60+minute();
-  int idProg = sto.weekProg[weekday()-1];
-  if (DEBUG) {
-    Serial.print("minuteNow=");
-    Serial.print(minuteNow);
-    Serial.print(" idProg=");
-    Serial.println(idProg);
-  }
-  float fmt=((float)(sto.forceData.maxTemp))/10.0f;
-  float fht=((float)(sto.forceData.hysteresisTemp))/100.0f;
-  // controllo force functionality
-  if (sto.forceData.hForce) {
-    if (sto.forceData.tFin > now()) {
-      if (sto.forceData.hForce>0 && hh>7 && hh<23 && ((fLastTemp<fmt && !bFire) || (fLastTemp<fmt+fht && bFire))) // forza ma non di notte e se supero maxtemp
-        bFire = true;
-      else
-        bFire = false;
-      if (DEBUG) {
-        Serial.print("forceFor=");
-        Serial.print(sto.forceData.hForce);
-        Serial.println(" hour");
+  if(okTime) {
+    int hh = hour();
+    int minuteNow = hh*60+minute();
+    int idProg = sto.weekProg[weekday()-1];
+    if (DEBUG) {
+      Serial.print("minuteNow=");
+      Serial.print(minuteNow);
+      Serial.print(" idProg=");
+      Serial.println(idProg);
+    }
+    float fmt=((float)(sto.forceData.maxTemp))/10.0f;
+    float fht=((float)(sto.forceData.hysteresisTemp))/100.0f;
+    // controllo force functionality
+    if (sto.forceData.hForce) {
+      if (sto.forceData.tFin > now()) {
+        if (sto.forceData.hForce>0 && hh>7 && hh<23 && ((fLastTemp<fmt && !bFire) || (fLastTemp<fmt+fht && bFire))) // forza ma non di notte e se supero maxtemp
+          bFire = true;
+        else
+          bFire = false;
+        if (DEBUG) {
+          Serial.print("forceFor=");
+          Serial.print(sto.forceData.hForce);
+          Serial.println(" hour");
+        }
+      }
+      else {
+        sto.forceData.hForce = 0;
+        sto.forceData.tFin = 0;
+        //saveData((byte*)&forceData, sizeof(forceData), EEPROM_OFSF);
       }
     }
     else {
-      sto.forceData.hForce = 0;
-      sto.forceData.tFin = 0;
-      //saveData((byte*)&forceData, sizeof(forceData), EEPROM_OFSF);
+      // check sequences
+      int i1, i2;
+      findNextCheckPoint(idProg, i1, i2);
+      float setPtemp = sto.progs[idProg].T[i1]; // setpoint di temperatura da tenere in questa sequenza
+      setPtemp /= 10.0;
+      if(setPtemp>fmt)
+        setPtemp=fmt;
+      if ((!bFire && fLastTemp < setPtemp) || (bFire && fLastTemp < (setPtemp + fht)))
+        bFire = true;
+      else
+        bFire = false;
     }
   }
-  else {
-    // check sequences
-    int i1, i2;
-    findNextCheckPoint(idProg, i1, i2);
-    float setPtemp = sto.progs[idProg].T[i1]; // setpoint di temperatura da tenere in questa sequenza
-    setPtemp /= 10.0;
-    if(setPtemp>fmt)
-      setPtemp=fmt;
-    if ((!bFire && fLastTemp < setPtemp) || (bFire && fLastTemp < (setPtemp + fht)))
-      bFire = true;
-    else
-      bFire = false;
-  }
+  else
+    bFire=false;
   // caldaia
   if (bFire && !sto.forceData.bOFF) {
     digitalWrite(CALDAIA, LOW);
