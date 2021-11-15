@@ -24,7 +24,7 @@ stStorage preSto =  {true,
                     {{ 210, 195, 210, 190, 000, 000 }, { 0x051E, 0x0800, 0x0F00, 0x1700, 0x0000, 0x0000 }},
                     {{ 170, 170, 000, 000, 000, 000 }, { 0x0500, 0x173B, 0x0000, 0x0000, 0x0000, 0x0000 }}},
                     { 0, 2, 2, 2, 2, 2, 1 },
-                    { 0, 0, -25, 220, 15, false}};
+                    { 0, 0, -25, 220, 15, false, 1}};
 stStorage sto;
 void saveDataFlash() {
   WiFiStorageFile s = WiFiStorage.open("/fs/CT2_Storage");
@@ -91,7 +91,7 @@ bool updateNtpTime() {
   if(Udp.begin(portNTP++)) {
     delay(100);
     while (Udp.parsePacket() > 0) ; // discard any previously received packets
-    // send NPT packet---------------------------------
+    // send NTP packet---------------------------------
     memset(packetBuffer, 0, NTP_PACKET_SIZE);
     packetBuffer[0] = 0b11100011;   // LI, Version, Mode
     packetBuffer[1] = 0;     // Stratum, or type of clock
@@ -125,7 +125,7 @@ bool updateNtpTime() {
         secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
         secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
         secsSince1900 |= (unsigned long)packetBuffer[43];
-        time_t nptt=secsSince1900 - 2208988800UL + 1*SECS_PER_HOUR; // +1==Central European Time
+        time_t nptt=secsSince1900 - 2208988800UL + sto.forceData.ntpOffset*SECS_PER_HOUR; // +Central European Time+legal
         setTime(nptt);
         return true;
       }
@@ -326,7 +326,7 @@ bool dataMail() {
       Serial.println("Sending email: <start>");
     client.println(F("To: Admin <fabrizio.allevi@gmail.com>"));
 
-    client.println(F("From: MK1010 <fabrizio.allevi@tiscali.it>"));
+    client.println(F("From: MKR1010 <fabrizio.allevi@tiscali.it>"));
     client.println(F("Subject: CT2_FA data"));
     float f;
     int maxpkt=80;
@@ -465,7 +465,7 @@ bool resetMail() {
       Serial.println("Sending email: <start>");
     client.println(F("To: Admin <fabrizio.allevi@gmail.com>"));
 
-    client.println(F("From: MK1010 <fabrizio.allevi@tiscali.it>"));
+    client.println(F("From: MKR1010 <fabrizio.allevi@tiscali.it>"));
     client.println(F("Subject: CT2_FA reset"));
 
     // data payload

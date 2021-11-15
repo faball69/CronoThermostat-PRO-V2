@@ -110,6 +110,9 @@ void runWifiService() {
               else if(var[1]=='P') {
                 sto.forceData.bOFF=val.toInt();
               }
+              else if(var[1]=='N') {
+                sto.forceData.ntpOffset=val.toInt();
+              }
             }
             ptr = strtok(NULL, "&");  // takes a list of delimiters
           }
@@ -241,10 +244,11 @@ void page2(WiFiClient &client) {
     <p>ofsTemp <input type=text size=1 name=FO value=%d>\
     maxTemp <input type=text size=1 name=FM value=%d>\
     hysTemp <input type=text size=1 name=FY value=%d>\
-    plantOFF <input type=text size=1 name=FP value=%d></p>\
+    plantOFF <input type=text size=1 name=FP value=%d>\
+    ntpOffset <input type=text size=1 name=FN value=%d></p>\
     <input type=submit value=Change+Store>\
   </form>\
-  </body></html>\n", sto.forceData.ofsTemp, sto.forceData.maxTemp, sto.forceData.hysteresisTemp, sto.forceData.bOFF);
+  </body></html>\n", sto.forceData.ofsTemp, sto.forceData.maxTemp, sto.forceData.hysteresisTemp, sto.forceData.bOFF, sto.forceData.ntpOffset);
   if(DEBUG) {
       Serial.println(buffer);
       Serial.println(strlen(buffer));

@@ -71,6 +71,7 @@ struct stForce {
   int maxTemp;
   int hysteresisTemp;   // in °C/100
   bool bOFF;
+  int ntpOffset;
 };
 struct stProgram {
   int T[MAX_SEQ];  // in decimi di grado
